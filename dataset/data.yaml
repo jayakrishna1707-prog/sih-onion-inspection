@@ -1,0 +1,6 @@
+path: c:\Users\acer\OneDrive\Desktop\sih problem\dataset
+train: images
+val: images
+
+names:
+  0: onion
