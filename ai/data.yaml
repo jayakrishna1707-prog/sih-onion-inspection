@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['onion']
+
+roboflow:
+  workspace: jayakrishna007-s-workspace
+  project: onion-yhzc7-igeeh
+  version: dataset
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/jayakrishna007-s-workspace/onion-yhzc7-igeeh/dataset/dataset

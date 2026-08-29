@@ -33,18 +33,32 @@ class SizeCalibrator:
 
 
 class YOLOOnionInspector:
-    def __init__(self, model_path="weights/best.pt"):
-        self.model_path = model_path
-        self.model = None
+    def __init__(self, model_path="ai/models/best.pt"):
         self.calibrator = SizeCalibrator(reference_real_diameter_mm=50.0)
-        
-        if os.path.exists(self.model_path):
+        self.model = None
+
+        candidate_paths = [
+            model_path,
+            os.path.join("ai", "models", "best.pt"),
+            os.path.join("backend", "weights", "best.pt"),
+            os.path.join("weights", "best.pt")
+        ]
+
+        active_path = None
+        for p in candidate_paths:
+            if os.path.exists(p):
+                active_path = p
+                break
+
+        self.model_path = active_path if active_path else model_path
+
+        if active_path:
             try:
                 from ultralytics import YOLO
-                print(f"[YOLOOnionInspector] Loading trained model: {self.model_path}")
-                self.model = YOLO(self.model_path)
+                print(f"[YOLOOnionInspector] Loading trained model: {active_path}")
+                self.model = YOLO(active_path)
             except Exception as e:
-                print(f"[YOLOOnionInspector] Failed loading model: {e}")
+                print(f"[YOLOOnionInspector] Failed loading model from {active_path}: {e}")
                 self.model = None
 
     def inspect_image(
