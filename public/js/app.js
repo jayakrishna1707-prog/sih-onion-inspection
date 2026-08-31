@@ -81,7 +81,15 @@ class AppRouter {
 }
 
 // Global App Bootstrapper
-document.addEventListener('DOMContentLoaded', () => {
-  window.appRouter = new AppRouter();
-  console.log('[SIH26031] Operational Application Loaded.');
-});
+function bootstrapApp() {
+  if (!window.appRouter) {
+    window.appRouter = new AppRouter();
+    console.log('[SIH26031] Operational Application Loaded.');
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootstrapApp);
+} else {
+  bootstrapApp();
+}
