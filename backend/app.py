@@ -27,7 +27,7 @@ app.add_middleware(
 )
 
 # Initialize AI Inspector
-inspector = YOLOOnionInspector(model_path="weights/best.pt")
+inspector = YOLOOnionInspector(model_path="ai/models/best.pt")
 
 # In-memory storage for lots (mirrored with persistent frontend DB)
 lots_db = {}

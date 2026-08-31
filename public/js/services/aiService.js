@@ -21,12 +21,23 @@ class AIService {
   async inspectSample(fileOrDataUrl, calibrationMm = 50.0, referencePx = 0.0, confThreshold = 0.60, debugMode = false) {
     const nmsThreshold = 0.45;
 
-    // Convert data URL or File into a Blob for backend FormData
+    // Convert any input (File, Blob, data URL, or relative image path) into a Blob for backend POST
     let blob = null;
-    if (fileOrDataUrl instanceof File || fileOrDataUrl instanceof Blob) {
-      blob = fileOrDataUrl;
-    } else if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
-      blob = this.dataURItoBlob(fileOrDataUrl);
+    try {
+      if (fileOrDataUrl instanceof File || fileOrDataUrl instanceof Blob) {
+        blob = fileOrDataUrl;
+      } else if (typeof fileOrDataUrl === 'string') {
+        if (fileOrDataUrl.startsWith('data:')) {
+          blob = this.dataURItoBlob(fileOrDataUrl);
+        } else {
+          const res = await fetch(fileOrDataUrl);
+          if (res.ok) {
+            blob = await res.blob();
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[AIService] Failed to obtain image blob for backend:', e);
     }
 
     if (blob) {
@@ -61,9 +72,15 @@ class AIService {
   }
 
   processClientVision(fileOrDataUrl, calibrationMm, referencePx, confThreshold, nmsThreshold, debugMode) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const img = new Image();
+      img.crossOrigin = "Anonymous";
       
+      img.onerror = (err) => {
+        console.error('[AIService] Image failed to load on client canvas:', err);
+        reject(new Error("Failed to load image for inspection analysis."));
+      };
+
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
