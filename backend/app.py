@@ -34,11 +34,13 @@ lots_db = {}
 
 @app.get("/api/v1/health")
 def health_check():
+    if not inspector.model:
+        inspector.__init__(model_path="ai/models/best.pt")
     return {
         "status": "online",
         "system": "SIH26031 Procurement Centre System",
         "yolo_model_loaded": inspector.model is not None,
-        "mode": "Live PyTorch YOLO" if inspector.model else "Modular Computer Vision Engine"
+        "mode": "Live PyTorch YOLO (best.pt)" if inspector.model else "No Trained Onion Model Loaded"
     }
 
 @app.post("/api/v1/inspect")
@@ -52,9 +54,11 @@ async def inspect_onion_sample(
 ):
     """
     Receives sample image file, calibration scale, confidence threshold, NMS, and debug flags.
-    Performs onion detection, NMS filtering, crop quality classification.
+    Performs onion detection using trained YOLO weights (ai/models/best.pt).
     """
     try:
+        if not inspector.model:
+            inspector.__init__(model_path="ai/models/best.pt")
         image_bytes = await file.read()
         results = inspector.inspect_image(
             image_bytes,

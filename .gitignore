@@ -6,7 +6,11 @@ __pycache__/
 *.log
 dataset/
 ai/models/
+ai/train/
+ai/valid/
+ai/test/
 runs/
 weights/
 *.pt
+
 
