@@ -31,10 +31,15 @@ class StorageService {
 
   getLotById(lotId) {
     const lots = this.getLots();
-    return lots.find(l => l.lot_id === lotId) || null;
+    let lot = lots.find(l => l.lot_id === lotId) || null;
+    if (!lot && this.currentLot && this.currentLot.lot_id === lotId) {
+      lot = this.currentLot;
+    }
+    return lot;
   }
 
   async saveLot(lot) {
+    this.currentLot = lot;
     const lots = this.getLots();
     const existingIdx = lots.findIndex(l => l.lot_id === lot.lot_id);
     
@@ -44,7 +49,22 @@ class StorageService {
       lots.unshift(lot);
     }
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(lots));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(lots));
+    } catch (quotaErr) {
+      console.warn('[StorageService] LocalStorage quota exceeded. Pruning historical image payloads:', quotaErr);
+      // Prune base64 annotated_image from older lots
+      lots.forEach((l, idx) => {
+        if (idx > 0 && l.ai_results && l.ai_results.annotated_image) {
+          l.ai_results = { ...l.ai_results, annotated_image: null };
+        }
+      });
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(lots));
+      } catch (e2) {
+        console.error('[StorageService] LocalStorage write failed after pruning:', e2);
+      }
+    }
 
     // Async sync with Python FastAPI backend if available
     try {
@@ -54,7 +74,6 @@ class StorageService {
         body: JSON.stringify(lot)
       });
     } catch (e) {
-      // System functions seamlessly even if backend endpoint is offline
       console.log('Backend REST endpoint offline, saved locally to state.');
     }
 
