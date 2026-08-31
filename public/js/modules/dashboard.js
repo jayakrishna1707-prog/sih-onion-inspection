@@ -95,25 +95,31 @@ export function renderDashboard(container, router) {
                   </tr>
                 </thead>
                 <tbody>
-                  ${lots.slice(0, 5).map(lot => `
+                  ${lots.slice(0, 5).map(lot => {
+                    const st = (lot.status || 'PENDING_REVIEW').toString();
+                    const statusClass = st.toLowerCase().replace(/_/g, '-');
+                    const statusLabel = st.replace(/_/g, ' ');
+                    const gradeVal = lot.ai_results && lot.ai_results.grade_a_percentage !== undefined ? lot.ai_results.grade_a_percentage + '%' : 'Pending';
+                    return `
                     <tr>
-                      <td><strong>${lot.lot_id}</strong></td>
-                      <td>${lot.farmer_name}</td>
-                      <td><code>${lot.vehicle_number}</code></td>
-                      <td>${lot.quantity_quintals} Qtl</td>
-                      <td>${lot.ai_results ? lot.ai_results.grade_a_percentage + '%' : 'Pending'}</td>
+                      <td><strong>${lot.lot_id || 'N/A'}</strong></td>
+                      <td>${lot.farmer_name || 'N/A'}</td>
+                      <td><code>${lot.vehicle_number || 'N/A'}</code></td>
+                      <td>${lot.quantity_quintals || 0} Qtl</td>
+                      <td>${gradeVal}</td>
                       <td>
-                        <span class="badge badge-${lot.status.toLowerCase()}">
-                          ${lot.status.replace('_', ' ')}
+                        <span class="badge badge-${statusClass}">
+                          ${statusLabel}
                         </span>
                       </td>
                       <td>
                         <button class="btn btn-outline btn-sm btn-inspect-lot" data-id="${lot.lot_id}">
-                          ${lot.status === 'PENDING_REVIEW' ? '🔍 Review' : '📋 Report'}
+                          ${st === 'PENDING_REVIEW' ? '🔍 Review' : '📋 Report'}
                         </button>
                       </td>
                     </tr>
-                  `).join('')}
+                    `;
+                  }).join('')}
                 </tbody>
               </table>
             </div>

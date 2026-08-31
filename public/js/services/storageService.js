@@ -22,9 +22,13 @@ class StorageService {
   getLots() {
     try {
       const data = localStorage.getItem(STORAGE_KEY);
-      return data ? JSON.parse(data) : [];
+      if (!data) return INITIAL_LOTS;
+      const parsed = JSON.parse(data);
+      if (!Array.isArray(parsed)) return INITIAL_LOTS;
+      return parsed;
     } catch (e) {
-      console.error('Failed to parse local storage lots:', e);
+      console.error('[StorageService] Corrupted localStorage reset:', e);
+      localStorage.removeItem(STORAGE_KEY);
       return INITIAL_LOTS;
     }
   }
