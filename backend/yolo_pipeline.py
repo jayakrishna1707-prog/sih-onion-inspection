@@ -79,6 +79,16 @@ class YOLOOnionInspector:
             raise ValueError("Failed to decode image bytes.")
 
         height, width, _ = img.shape
+
+        # Fast CPU Inference Optimization: Resize large high-res photos to max 1024px
+        max_dim = max(height, width)
+        if max_dim > 1024:
+            scale = 1024.0 / max_dim
+            new_w = int(width * scale)
+            new_h = int(height * scale)
+            img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            height, width, _ = img.shape
+
         mm_per_pixel = (calibration_mm / reference_px) if reference_px > 0 else (50.0 / (min(width, height) * 0.15))
 
         # STEP 1 & 2: Detect Onions & Extract Proposals
@@ -380,9 +390,9 @@ class YOLOOnionInspector:
                 continue
 
             # Onion skin hue ranges (Yellow-gold, orange-brown, copper, deep red-purple onion peel)
-            lower_skin1 = np.array([0, 90, 50])
-            upper_skin1 = np.array([30, 255, 255])
-            lower_skin2 = np.array([150, 90, 50])
+            lower_skin1 = np.array([0, 35, 40])
+            upper_skin1 = np.array([35, 255, 255])
+            lower_skin2 = np.array([140, 35, 40])
             upper_skin2 = np.array([180, 255, 255])
             
             mask1 = cv2.inRange(roi_hsv, lower_skin1, upper_skin1)
@@ -391,8 +401,8 @@ class YOLOOnionInspector:
             
             onion_peel_ratio = np.sum(skin_mask > 0) / (roi_hsv.shape[0] * roi_hsv.shape[1] + 1e-5)
             
-            # Must have strong onion peel color presence (>35% of ROI) and high saturation (mean_sat >= 85)
-            if onion_peel_ratio < 0.35 or mean_sat < 85.0:
+            # Must have strong onion peel color presence (>25% of ROI) and non-flat saturation
+            if onion_peel_ratio < 0.25 or mean_sat < 35.0:
                 continue
             
             conf = min(0.96, max(0.40, (circularity * 0.4) + (onion_peel_ratio * 0.4) + (mean_sat / 255.0 * 0.2)))
