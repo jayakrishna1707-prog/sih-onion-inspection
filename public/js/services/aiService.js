@@ -82,20 +82,21 @@ class AIService {
       };
 
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = img.width || 720;
-        canvas.height = img.height || 540;
-        
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        
-        const width = canvas.width;
-        const height = canvas.height;
-        const scaleMmPerPx = referencePx > 0 ? (calibrationMm / referencePx) : (50.0 / (Math.min(width, height) * 0.15));
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = img.width || 720;
+          canvas.height = img.height || 540;
+          
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          
+          const width = canvas.width;
+          const height = canvas.height;
+          const scaleMmPerPx = referencePx > 0 ? (calibrationMm / referencePx) : (50.0 / (Math.min(width, height) * 0.15));
 
-        // Retrieve pixel data for color/blob analysis
-        const imgData = ctx.getImageData(0, 0, width, height);
-        const pixels = imgData.data;
+          // Retrieve pixel data for color/blob analysis
+          const imgData = ctx.getImageData(0, 0, width, height);
+          const pixels = imgData.data;
 
         // STEP 1 & 2: Extract Real Bounding Box Proposals using Color & Circular Blob Detection
         const rawProposals = [];
@@ -417,11 +418,14 @@ class AIService {
             rejected_count: rejectedDetections.length,
             rejected_detections: rejectedDetections
           }
-        });
+        } catch (err) {
+          console.error('[AIService] Error processing canvas vision:', err);
+          reject(err);
+        }
       };
 
       // Set image source
-      if (fileOrDataUrl instanceof File) {
+      if (fileOrDataUrl instanceof File || fileOrDataUrl instanceof Blob) {
         const reader = new FileReader();
         reader.onload = (e) => img.src = e.target.result;
         reader.readAsDataURL(fileOrDataUrl);
