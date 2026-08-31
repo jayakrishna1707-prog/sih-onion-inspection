@@ -7,14 +7,32 @@
 const BACKEND_URL = 'http://localhost:8000/api/v1';
 
 class AIService {
+  dataURItoBlob(dataURI) {
+    const byteString = atob(dataURI.split(',')[1]);
+    const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    return new Blob([ab], { type: mimeString });
+  }
+
   async inspectSample(fileOrDataUrl, calibrationMm = 50.0, referencePx = 0.0, confThreshold = 0.60, debugMode = false) {
     const nmsThreshold = 0.45;
 
-    // Attempt real backend call first if input is File object
-    if (fileOrDataUrl instanceof File) {
+    // Convert data URL or File into a Blob for backend FormData
+    let blob = null;
+    if (fileOrDataUrl instanceof File || fileOrDataUrl instanceof Blob) {
+      blob = fileOrDataUrl;
+    } else if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
+      blob = this.dataURItoBlob(fileOrDataUrl);
+    }
+
+    if (blob) {
       try {
         const formData = new FormData();
-        formData.append('file', fileOrDataUrl);
+        formData.append('file', blob, 'sample_onion.jpg');
         formData.append('calibration_mm', calibrationMm);
         formData.append('reference_px', referencePx);
         formData.append('conf_threshold', confThreshold);
@@ -338,11 +356,17 @@ class AIService {
         const ursPct = Math.round((defectiveCount / totalAccepted * 100) * 10) / 10;
         const avgConf = Math.round((classifiedDetections.reduce((acc, d) => acc + d.confidence, 0) / totalAccepted) * 100) / 100;
 
+        const avgDia = diameters.length > 0 ? (diameters.reduce((a, b) => a + b, 0) / diameters.length).toFixed(1) : '0.0';
+        const minDia = diameters.length > 0 ? Math.min(...diameters).toFixed(1) : '0.0';
+        const maxDia = diameters.length > 0 ? Math.max(...diameters).toFixed(1) : '0.0';
+
         const annotatedImageBase64 = canvas.toDataURL('image/jpeg', 0.85);
 
         resolve({
           total_inspected: totalAccepted,
           good: counts.good,
+          average: counts.average,
+          bad: counts.bad,
           damaged: counts.damaged,
           rotten: counts.rotten,
           sprouted: counts.sprouted,
@@ -352,10 +376,24 @@ class AIService {
           confidence_score: avgConf,
           conf_threshold: confThreshold,
           model_type: "Client Computer Vision Engine",
-          message: `Successfully detected and classified ${totalAccepted} onions.`,
-          size_distribution: sizeDist,
+          message: `Successfully detected and annotated ${totalAccepted} individual onion(s).`,
           annotated_image: annotatedImageBase64,
           detections: classifiedDetections,
+          summary_panel: {
+            total_onions: totalAccepted,
+            good: counts.good,
+            average: counts.average,
+            bad: counts.bad,
+            average_diameter: `${avgDia} mm`,
+            smallest_onion: `${minDia} mm`,
+            largest_onion: `${maxDia} mm`
+          },
+          table_data: classifiedDetections.map(d => ({
+            id: d.id,
+            diameter: `${d.diameter} ${d.unit || 'mm'}`,
+            size: d.size_class,
+            quality: d.quality_category
+          })),
           debug_telemetry: {
             raw_proposals_count: rawProposals.length,
             accepted_count: totalAccepted,

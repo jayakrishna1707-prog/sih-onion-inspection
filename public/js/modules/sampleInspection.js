@@ -227,22 +227,31 @@ export function renderSampleInspection(container, router, params = {}) {
     btn.disabled = true;
     btn.innerHTML = '⏳ Running AI Computer Vision Model...';
 
-    const calibMm = parseFloat(document.getElementById('calib-mm')?.value || 50.0);
-    const confThreshold = parseFloat(document.getElementById('conf-threshold')?.value || 0.60);
-    const debugMode = document.getElementById('toggle-debug-mode')?.checked || false;
+    try {
+      const calibMm = parseFloat(document.getElementById('calib-mm')?.value || 50.0);
+      const confThreshold = parseFloat(document.getElementById('conf-threshold')?.value || 0.60);
+      const debugMode = document.getElementById('toggle-debug-mode')?.checked || false;
 
-    const aiResults = await aiService.inspectSample(
-      capturedImageFile || capturedDataUrl,
-      calibMm,
-      0.0,
-      confThreshold,
-      debugMode
-    );
-    
-    // Save AI results to lot object
-    lot.ai_results = aiResults;
-    await storageService.saveLot(lot);
+      const imageSource = capturedImageFile || capturedDataUrl || previewImg.src;
 
-    router.navigate('ai-analysis', { lotId: lot.lot_id });
+      const aiResults = await aiService.inspectSample(
+        imageSource,
+        calibMm,
+        0.0,
+        confThreshold,
+        debugMode
+      );
+      
+      // Save AI results to lot object
+      lot.ai_results = aiResults;
+      await storageService.saveLot(lot);
+
+      router.navigate('ai-analysis', { lotId: lot.lot_id });
+    } catch (err) {
+      console.error('[sampleInspection] AI Inspection failed:', err);
+      alert('Inspection failed: ' + (err.message || 'Error executing AI model.'));
+      btn.disabled = false;
+      btn.innerHTML = '🔍 Run AI Computer Vision Inspection';
+    }
   });
 }
