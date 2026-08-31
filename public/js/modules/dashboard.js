@@ -59,7 +59,7 @@ export function renderDashboard(container, router) {
             <span class="stat-icon">❌</span>
           </div>
           <div class="stat-value text-red">${rejectedLots} <span class="stat-unit">Lots</span></div>
-          <div class="stat-meta">${((rejectedLots/totalLots)*100).toFixed(0)}% rejection rate (Defects/Rot)</div>
+          <div class="stat-meta">${totalLots > 0 ? ((rejectedLots/totalLots)*100).toFixed(0) : 0}% rejection rate (Defects/Rot)</div>
         </div>
 
         <div class="stat-card border-amber">

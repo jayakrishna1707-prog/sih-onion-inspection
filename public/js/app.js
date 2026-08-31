@@ -52,30 +52,45 @@ class AppRouter {
     // Scroll to top
     window.scrollTo(0, 0);
 
-    switch (viewName) {
-      case 'dashboard':
-        renderDashboard(this.container, this);
-        break;
-      case 'register':
-        renderLotRegistration(this.container, this);
-        break;
-      case 'sample':
-        renderSampleInspection(this.container, this, params);
-        break;
-      case 'ai-analysis':
-        renderAIAnalysis(this.container, this, params);
-        break;
-      case 'review':
-        renderInspectorReview(this.container, this, params);
-        break;
-      case 'history':
-        renderInspectionHistory(this.container, this);
-        break;
-      case 'report':
-        renderQualityReport(this.container, this, params);
-        break;
-      default:
-        renderDashboard(this.container, this);
+    try {
+      switch (viewName) {
+        case 'dashboard':
+          renderDashboard(this.container, this);
+          break;
+        case 'register':
+          renderLotRegistration(this.container, this);
+          break;
+        case 'sample':
+          renderSampleInspection(this.container, this, params);
+          break;
+        case 'ai-analysis':
+          renderAIAnalysis(this.container, this, params);
+          break;
+        case 'review':
+          renderInspectorReview(this.container, this, params);
+          break;
+        case 'history':
+          renderInspectionHistory(this.container, this);
+          break;
+        case 'report':
+          renderQualityReport(this.container, this, params);
+          break;
+        default:
+          renderDashboard(this.container, this);
+      }
+    } catch (err) {
+      console.error(`[AppRouter] Error rendering view ${viewName}:`, err);
+      if (this.container) {
+        this.container.innerHTML = `
+          <div class="card margin-center max-w-2xl text-center padding-lg">
+            <h2 class="text-red font-bold">⚠️ Rendering Exception in View '${viewName}'</h2>
+            <p class="margin-top-sm text-muted">${err.message}</p>
+            <button class="btn btn-primary margin-top-md" onclick="window.appRouter.navigate('dashboard')">
+              🔄 Return to Dashboard
+            </button>
+          </div>
+        `;
+      }
     }
   }
 }
