@@ -96,29 +96,46 @@ class YOLOOnionInspector:
         classified_detections = []
         counts = {"good": 0, "damaged": 0, "rotten": 0, "sprouted": 0, "undersized": 0}
 
-        # STEP 4 & 5: Crop Onion & Classify Quality on Crop (ONLY FOR ACCEPTED ONIONS)
+        # STEP 4 & 5: Crop Onion, Measure Individual Diameter & Classify Quality/Size
         classified_detections = []
-        counts = {"good": 0, "damaged": 0, "rotten": 0, "sprouted": 0, "undersized": 0}
+        counts = {"good": 0, "average": 0, "bad": 0, "damaged": 0, "rotten": 0, "sprouted": 0, "undersized": 0}
+        diameters = []
+
+        # Configurable size thresholds (in mm or px)
+        SMALL_THRESHOLD = 45.0
+        LARGE_THRESHOLD = 65.0
+
+        unit = "mm" if reference_px > 0 else "px"
 
         for idx, det in enumerate(accepted_detections):
             x1, y1, x2, y2 = det["bbox"]
             conf = det["confidence"]
             
-            # Crop onion region
+            # Center and radius calculation for circular annotation
+            center_x = int((x1 + x2) / 2.0)
+            center_y = int((y1 + y2) / 2.0)
+            w_px = abs(x2 - x1)
+            h_px = abs(y2 - y1)
+            radius_px = int(max(w_px, h_px) / 2.0)
+            diameter_px = round(2.0 * radius_px, 1)
+
+            # Diameter calculation in mm if calibrated
+            if reference_px > 0:
+                diameter_val = round(diameter_px * mm_per_pixel, 1)
+            else:
+                diameter_val = diameter_px
+
+            diameters.append(diameter_val)
+
+            # Crop onion region for quality classification
             crop_bgr = img[max(0, y1):min(height, y2), max(0, x1):min(width, x2)]
             
-            # Size Measurement
-            size_data = self.calibrator.convert_bbox_to_size([x1, y1, x2, y2], mm_per_pixel)
-            diameter_mm = size_data["diameter_mm"]
-
-            # Classify quality strictly on the crop (if not already classified by model)
             if "classification" in det and det["classification"] in counts:
-                quality_cls = det["classification"]
+                raw_quality = det["classification"]
             else:
-                quality_cls = self._classify_crop_quality(crop_bgr, diameter_mm)
+                raw_quality = self._classify_crop_quality(crop_bgr, diameter_val if reference_px > 0 else (diameter_val * 0.24))
 
-            # Reject if crop is background or fails valid onion verification
-            if quality_cls is None or quality_cls == "background":
+            if raw_quality is None or raw_quality == "background":
                 rejected_detections.append({
                     "bbox": det["bbox"],
                     "confidence": conf,
@@ -126,23 +143,60 @@ class YOLOOnionInspector:
                 })
                 continue
 
-            # Enforce size rule: if quality is good but diameter < 45mm, reclassify as undersized
-            if quality_cls == "good" and diameter_mm < 45.0:
-                quality_cls = "undersized"
+            # Classify Size
+            if diameter_val < SMALL_THRESHOLD:
+                size_class = "Small"
+            elif diameter_val >= LARGE_THRESHOLD:
+                size_class = "Large"
+            else:
+                size_class = "Medium"
 
-            counts[quality_cls] += 1
+            # Determine Combined Quality & Color Code
+            # GREEN -> Good / Desirable (Good quality + Medium/Large size)
+            # YELLOW/ORANGE -> Average (Good quality + Small size OR Medium size)
+            # RED -> Bad (Damaged / Rotten / Sprouted / Defective)
+            if raw_quality in ["damaged", "rotten", "sprouted"]:
+                quality_cat = "BAD"
+                display_color = "red"
+                bgr_color = (68, 68, 239)     # Bright Red
+                counts["bad"] += 1
+                counts[raw_quality] += 1
+            elif raw_quality == "undersized" or size_class == "Small":
+                quality_cat = "AVERAGE"
+                display_color = "yellow"
+                bgr_color = (20, 200, 240)    # Amber / Gold
+                counts["average"] += 1
+                counts["undersized"] += 1
+            elif size_class == "Medium":
+                quality_cat = "AVERAGE"
+                display_color = "yellow"
+                bgr_color = (20, 200, 240)    # Amber / Gold
+                counts["average"] += 1
+                counts["good"] += 1
+            else:
+                quality_cat = "GOOD"
+                display_color = "green"
+                bgr_color = (74, 197, 34)     # Emerald Green
+                counts["good"] += 1
 
             classified_detections.append({
                 "id": len(classified_detections) + 1,
-                "bbox": [x1, y1, x2, y2],
+                "center": [center_x, center_y],
+                "radius": radius_px,
+                "diameter": diameter_val,
+                "unit": unit,
+                "size_class": size_class,
+                "quality_category": quality_cat,
+                "raw_quality": raw_quality,
                 "confidence": round(conf, 2),
-                "classification": quality_cls,
-                "diameter_mm": diameter_mm,
+                "color": display_color,
+                "bgr_color": bgr_color,
+                "bbox": [x1, y1, x2, y2],
                 "status": "ACCEPTED"
             })
 
-        # STEP 6: Render Bounding Boxes ONLY for accepted detections (or debug overlays if debug_mode)
-        annotated_img = self._render_overlays(img, classified_detections, rejected_detections, debug_mode)
+        # STEP 6: Render Clean Single Circular Annotations
+        annotated_img = self._render_clean_circular_overlays(img, classified_detections, rejected_detections, debug_mode)
 
         total_accepted = len(classified_detections)
 
@@ -156,13 +210,21 @@ class YOLOOnionInspector:
         urs_pct = round(((total_accepted - good_count) / total_accepted * 100.0), 1)
         avg_conf = round(float(np.mean([d["confidence"] for d in classified_detections])), 2)
 
+        avg_dia = round(float(np.mean(diameters)), 1) if diameters else 0.0
+        min_dia = round(float(np.min(diameters)), 1) if diameters else 0.0
+        max_dia = round(float(np.max(diameters)), 1) if diameters else 0.0
+
         # Encode Annotated Image
         _, buffer = cv2.imencode('.jpg', annotated_img)
         img_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
 
+        model_name = f"Ultralytics YOLO ({os.path.basename(self.model_path)})" if self.model else "Modular Computer Vision Engine"
+
         return {
             "total_inspected": total_accepted,
             "good": counts["good"],
+            "average": counts["average"],
+            "bad": counts["bad"],
             "damaged": counts["damaged"],
             "rotten": counts["rotten"],
             "sprouted": counts["sprouted"],
@@ -171,10 +233,27 @@ class YOLOOnionInspector:
             "urs_percentage": urs_pct,
             "confidence_score": avg_conf,
             "conf_threshold": conf_threshold,
-            "model_type": "Ultralytics YOLO (weights/best.pt)" if self.model else "No Trained Onion Model Loaded (weights/best.pt missing)",
-            "message": f"Successfully detected and classified {total_accepted} onions.",
+            "model_type": model_name,
+            "message": f"Successfully detected and annotated {total_accepted} individual onion(s).",
             "annotated_image": img_base64,
             "detections": classified_detections,
+            "summary_panel": {
+                "total_onions": total_accepted,
+                "good": counts["good"],
+                "average": counts["average"],
+                "bad": counts["bad"],
+                "average_diameter": f"{avg_dia} {unit}",
+                "smallest_onion": f"{min_dia} {unit}",
+                "largest_onion": f"{max_dia} {unit}"
+            },
+            "table_data": [
+                {
+                    "id": d["id"],
+                    "diameter": f"{d['diameter']} {d['unit']}",
+                    "size": d["size_class"],
+                    "quality": d["quality_category"]
+                } for d in classified_detections
+            ],
             "debug_telemetry": {
                 "raw_proposals_count": len(raw_proposals),
                 "accepted_count": total_accepted,
@@ -182,6 +261,49 @@ class YOLOOnionInspector:
                 "rejected_detections": rejected_detections if debug_mode else []
             }
         }
+
+    def _render_clean_circular_overlays(self, img, accepted_detections, rejected_detections, debug_mode):
+        """
+        Renders ONE clean circular outline per detected onion with compact non-overlapping text labels.
+        """
+        annotated = img.copy()
+        
+        # 1. If Debug Mode enabled, draw raw proposal boxes as thin gray outline
+        if debug_mode:
+            for r in rejected_detections:
+                x1, y1, x2, y2 = r["bbox"]
+                conf_pct = int(r["confidence"] * 100)
+                cv2.rectangle(annotated, (x1, y1), (x2, y2), (120, 120, 120), 1)
+                cv2.putText(annotated, f"RAW ({conf_pct}%)", (x1, max(12, y1 - 2)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.35, (120, 120, 120), 1)
+
+        # 2. Draw ONE clean fitted circle and compact label for each accepted onion
+        for det in accepted_detections:
+            cx, cy = det["center"]
+            r = det["radius"]
+            bgr_color = det["bgr_color"]
+            
+            # Draw Clean Fitted Circle
+            cv2.circle(annotated, (cx, cy), r, bgr_color, 3, cv2.LINE_AA)
+            cv2.circle(annotated, (cx, cy), 3, bgr_color, -1) # Center dot
+
+            # Format Compact Label: #1 | GOOD | 78 px
+            label = f"#{det['id']} | {det['quality_category']} | {det['diameter']} {det['unit']}"
+            
+            (tw, th), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+            
+            # Calculate non-overlapping label position above the circle
+            lx = max(5, min(annotated.shape[1] - tw - 10, cx - int(tw / 2)))
+            ly = max(th + 8, cy - r - 8)
+
+            # Draw background pill behind text for sharp contrast readability
+            cv2.rectangle(annotated, (lx - 4, ly - th - 5), (lx + tw + 4, ly + baseline + 2), (20, 20, 20), -1)
+            cv2.rectangle(annotated, (lx - 4, ly - th - 5), (lx + tw + 4, ly + baseline + 2), bgr_color, 1)
+            
+            # Text label
+            cv2.putText(annotated, label, (lx, ly), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
+
+        return annotated
 
     def _detect_yolo(self, img):
         results = self.model(img)[0]

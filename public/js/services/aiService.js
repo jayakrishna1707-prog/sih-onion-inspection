@@ -176,10 +176,10 @@ class AIService {
           }
         }
 
-        // STEP 4, 5 & 6: Crop, Classify Quality & Render Overlays
+        // STEP 4, 5 & 6: Crop, Classify Quality/Size & Render Circular Overlays
         const classifiedDetections = [];
-        const counts = { good: 0, damaged: 0, rotten: 0, sprouted: 0, undersized: 0 };
-        const sizeDist = { "35-44mm": 0, "45-54mm": 0, "55-64mm": 0, "65mm+": 0 };
+        const counts = { good: 0, average: 0, bad: 0, damaged: 0, rotten: 0, sprouted: 0, undersized: 0 };
+        const diameters = [];
 
         // Clear canvas and redraw original image before annotations
         ctx.drawImage(img, 0, 0, width, height);
@@ -188,58 +188,96 @@ class AIService {
           const [x1, y1, x2, y2] = prop.bbox;
           const boxW = x2 - x1;
           const boxH = y2 - y1;
-          const avgPx = (boxW + boxH) / 2;
-          const diameterMm = Math.round(avgPx * scaleMmPerPx * 10) / 10;
 
-          // Quality Classification on Crop (Never default to good!)
-          let cls = "good";
-          if (prop.greenRatio > 0.08) cls = "sprouted";
-          else if (prop.blackRatio > 0.15) cls = "rotten";
-          else if (diameterMm < 45.0) cls = "undersized";
-          else cls = "good";
+          const cx = Math.round((x1 + x2) / 2);
+          const cy = Math.round((y1 + y2) / 2);
+          const radius = Math.round(Math.max(boxW, boxH) / 2);
+          const diameterPx = Math.round(radius * 2);
+          const diameterVal = Math.round(diameterPx * scaleMmPerPx * 10) / 10;
+          diameters.push(diameterVal);
 
-          counts[cls]++;
+          // Size classification
+          let sizeClass = "Medium";
+          if (diameterVal < 45.0) sizeClass = "Small";
+          else if (diameterVal >= 65.0) sizeClass = "Large";
 
-          // Size distribution
-          if (diameterMm < 45) sizeDist["35-44mm"]++;
-          else if (diameterMm < 55) sizeDist["45-54mm"]++;
-          else if (diameterMm < 65) sizeDist["55-64mm"]++;
-          else sizeDist["65mm+"]++;
+          // Quality Classification on Crop
+          let rawQuality = "good";
+          if (prop.greenRatio > 0.08) rawQuality = "sprouted";
+          else if (prop.blackRatio > 0.15) rawQuality = "rotten";
+          else if (diameterVal < 45.0) rawQuality = "undersized";
+          else rawQuality = "good";
+
+          let qualityCategory = "GOOD";
+          let colorCode = "#10b981"; // Green
+
+          if (["damaged", "rotten", "sprouted"].includes(rawQuality)) {
+            qualityCategory = "BAD";
+            colorCode = "#ef4444"; // Red
+            counts.bad++;
+            counts[rawQuality]++;
+          } else if (rawQuality === "undersized" || sizeClass === "Small" || sizeClass === "Medium") {
+            qualityCategory = "AVERAGE";
+            colorCode = "#f59e0b"; // Yellow/Amber
+            counts.average++;
+            if (rawQuality === "undersized") counts.undersized++;
+            else counts.good++;
+          } else {
+            qualityCategory = "GOOD";
+            colorCode = "#10b981"; // Green
+            counts.good++;
+          }
 
           classifiedDetections.push({
             id: idx + 1,
-            bbox: [x1, y1, x2, y2],
+            center: [cx, cy],
+            radius,
+            diameter: diameterVal,
+            unit: "mm",
+            size_class: sizeClass,
+            quality_category: qualityCategory,
             confidence: prop.confidence,
-            classification: cls,
-            diameter_mm: diameterMm,
+            color: colorCode === '#10b981' ? 'green' : colorCode === '#f59e0b' ? 'yellow' : 'red',
+            bbox: [x1, y1, x2, y2],
             status: "ACCEPTED"
           });
 
-          // Draw Overlay ON ACCEPTED DETECTIONS ONLY
-          const colorMap = {
-            good: '#10b981',       // Emerald Green
-            damaged: '#f59e0b',    // Amber
-            rotten: '#ef4444',     // Red
-            sprouted: '#a855f7',   // Purple
-            undersized: '#eab308'  // Gold
-          };
-          const strokeColor = colorMap[cls] || '#10b981';
-
-          ctx.strokeStyle = strokeColor;
+          // Draw ONE Clean Circular Annotation
+          ctx.strokeStyle = colorCode;
           ctx.lineWidth = 3;
-          ctx.strokeRect(x1, y1, boxW, boxH);
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+          ctx.stroke();
 
-          // Draw Label Tag with ID, Class, Confidence %, Diameter
-          const confPct = Math.round(prop.confidence * 100);
-          const label = `#${idx + 1} ${cls.toUpperCase()} (${confPct}%) ${diameterMm}mm`;
-          ctx.fillStyle = strokeColor;
-          ctx.fillRect(x1, Math.max(0, y1 - 22), 160, 22);
-          ctx.fillStyle = '#ffffff';
+          // Center Dot
+          ctx.fillStyle = colorCode;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 3, 0, 2 * Math.PI);
+          ctx.fill();
+
+          // Draw Compact Non-Overlapping Label Tag: #1 | GOOD | 52mm
+          const label = `#${idx + 1} | ${qualityCategory} | ${diameterVal}mm`;
           ctx.font = 'bold 11px sans-serif';
-          ctx.fillText(label, x1 + 4, Math.max(14, y1 - 6));
+          const textMetrics = ctx.measureText(label);
+          const tw = textMetrics.width;
+          const th = 14;
+
+          const lx = Math.max(5, Math.min(width - tw - 10, cx - Math.round(tw / 2)));
+          const ly = Math.max(th + 6, cy - radius - 8);
+
+          // Draw Background Pill
+          ctx.fillStyle = '#1e293b';
+          ctx.fillRect(lx - 4, ly - th + 2, tw + 8, th + 4);
+          ctx.strokeStyle = colorCode;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(lx - 4, ly - th + 2, tw + 8, th + 4);
+
+          // Text label
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(label, lx, ly);
         });
 
-        // If Debug Mode is enabled, draw rejected boxes in dashed gray
+        // If Debug Mode is enabled, draw raw rejected boxes as thin dashed gray lines
         if (debugMode) {
           rejectedDetections.forEach(r => {
             const [x1, y1, x2, y2] = r.bbox;
@@ -252,7 +290,7 @@ class AIService {
             const rConfPct = Math.round(r.confidence * 100);
             ctx.fillStyle = '#6b7280';
             ctx.font = '10px sans-serif';
-            ctx.fillText(`REJECTED (${rConfPct}%)`, x1 + 2, Math.max(12, y1 - 2));
+            ctx.fillText(`RAW (${rConfPct}%)`, x1 + 2, Math.max(12, y1 - 2));
           });
         }
 

@@ -184,10 +184,48 @@ export function renderAIAnalysis(container, router, params = {}) {
         </div>
       </div>
 
+      <!-- Summary Panel -->
+      ${ai.summary_panel ? `
+        <div class="card margin-top-lg border-emerald" style="background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%); border: 1px solid #bbf7d0;">
+          <div class="card-header">
+            <h3 class="card-title text-emerald">📊 Onion Inspection Summary Panel</h3>
+            <span class="badge badge-good">${ai.summary_panel.total_onions} Total Onions</span>
+          </div>
+          <div class="card-body">
+            <div class="metrics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px;">
+              <div class="metric-card" style="background:#fff; padding:12px; border-radius:8px; text-align:center; border:1px solid #e2e8f0;">
+                <div class="metric-value" style="font-size:22px; font-weight:bold; color:#10b981;">${ai.summary_panel.good}</div>
+                <div class="metric-label" style="font-size:12px; color:#64748b;">Good (Green)</div>
+              </div>
+              <div class="metric-card" style="background:#fff; padding:12px; border-radius:8px; text-align:center; border:1px solid #e2e8f0;">
+                <div class="metric-value" style="font-size:22px; font-weight:bold; color:#f59e0b;">${ai.summary_panel.average}</div>
+                <div class="metric-label" style="font-size:12px; color:#64748b;">Average (Yellow)</div>
+              </div>
+              <div class="metric-card" style="background:#fff; padding:12px; border-radius:8px; text-align:center; border:1px solid #e2e8f0;">
+                <div class="metric-value" style="font-size:22px; font-weight:bold; color:#ef4444;">${ai.summary_panel.bad}</div>
+                <div class="metric-label" style="font-size:12px; color:#64748b;">Bad (Red)</div>
+              </div>
+              <div class="metric-card" style="background:#fff; padding:12px; border-radius:8px; text-align:center; border:1px solid #e2e8f0;">
+                <div class="metric-value" style="font-size:20px; font-weight:bold; color:#3b82f6;">${ai.summary_panel.average_diameter}</div>
+                <div class="metric-label" style="font-size:12px; color:#64748b;">Avg Diameter</div>
+              </div>
+              <div class="metric-card" style="background:#fff; padding:12px; border-radius:8px; text-align:center; border:1px solid #e2e8f0;">
+                <div class="metric-value" style="font-size:20px; font-weight:bold; color:#6b7280;">${ai.summary_panel.smallest_onion}</div>
+                <div class="metric-label" style="font-size:12px; color:#64748b;">Smallest</div>
+              </div>
+              <div class="metric-card" style="background:#fff; padding:12px; border-radius:8px; text-align:center; border:1px solid #e2e8f0;">
+                <div class="metric-value" style="font-size:20px; font-weight:bold; color:#8b5cf6;">${ai.summary_panel.largest_onion}</div>
+                <div class="metric-label" style="font-size:12px; color:#64748b;">Largest</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ` : ''}
+
       <!-- Individual Detections Telemetry Table -->
       <div class="card margin-top-lg">
         <div class="card-header">
-          <h3 class="card-title">🔍 Individual Detection Confidence Telemetry</h3>
+          <h3 class="card-title">🔍 Individual Onion Measurements & Classification Table</h3>
           <span class="badge badge-good">${ai.detections ? ai.detections.length : 0} Accepted Detections</span>
         </div>
         <div class="card-body padding-none">
@@ -195,11 +233,12 @@ export function renderAIAnalysis(container, router, params = {}) {
             <table class="table">
               <thead>
                 <tr>
-                  <th>Bulb ID</th>
-                  <th>Classification</th>
+                  <th>ID</th>
+                  <th>Diameter</th>
+                  <th>Size Class</th>
+                  <th>Quality Class</th>
                   <th>Confidence Score</th>
-                  <th>Diameter (mm)</th>
-                  <th>Bounding Box (x1, y1, x2, y2)</th>
+                  <th>Center Position (x, y)</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -207,15 +246,20 @@ export function renderAIAnalysis(container, router, params = {}) {
                 ${(ai.detections && ai.detections.length > 0) ? ai.detections.map(d => `
                   <tr>
                     <td><strong>#${d.id}</strong></td>
-                    <td><span class="badge badge-${d.classification}">${d.classification.toUpperCase()}</span></td>
+                    <td><strong>${d.diameter} ${d.unit || 'px'}</strong></td>
+                    <td><span class="badge badge-outline">${d.size_class || 'Medium'}</span></td>
+                    <td>
+                      <span class="badge" style="background-color: ${d.color === 'green' ? '#10b981' : d.color === 'yellow' ? '#f59e0b' : '#ef4444'}; color: #fff;">
+                        ${(d.quality_category || d.classification || 'GOOD').toUpperCase()}
+                      </span>
+                    </td>
                     <td><strong>${(d.confidence * 100).toFixed(0)}%</strong> <code>(${d.confidence})</code></td>
-                    <td>${d.diameter_mm} mm</td>
-                    <td><code>[${d.bbox ? d.bbox.join(', ') : ''}]</code></td>
+                    <td><code>[${d.center ? d.center.join(', ') : ''}]</code></td>
                     <td><span class="text-emerald font-bold">✓ ACCEPTED</span></td>
                   </tr>
                 `).join('') : `
                   <tr>
-                    <td colspan="6" class="text-center padding-lg text-muted">No accepted detections found meeting confidence threshold.</td>
+                    <td colspan="7" class="text-center padding-lg text-muted">No accepted detections found meeting confidence threshold.</td>
                   </tr>
                 `}
               </tbody>
